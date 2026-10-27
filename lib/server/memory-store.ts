@@ -38,7 +38,7 @@ export class MemoryStore implements Store {
     const now = Date.now()
     const row: PlayerRow = {
       id: randomUUID(), roomId: p.roomId, nickname: p.nickname, car: p.car, tokenHash: p.tokenHash,
-      progress: 0, solvedMask: 0, lastCorrectAt: null, finishedAt: null,
+      progress: 0, solvedMask: 0, failedMask: 0, lastCorrectAt: null, finishedAt: null,
       joinedAt: now, lastSeenAt: now, lastSubmitAt: null,
     }
     this.players.set(row.id, row)
@@ -77,12 +77,22 @@ export class MemoryStore implements Store {
     return (this.submissions.get(roomId) ?? []).filter((s) => s.questionIdx === questionIdx).map((s) => ({ ...s }))
   }
 
+  async failPlayer(roomId: string, playerId: string, q: number) {
+    const room = this.rooms.get(roomId)
+    const p = this.players.get(playerId)
+    if (!room || !p || p.roomId !== roomId) return false
+    if (room.status !== 'running' || room.currentQ !== q || room.revealed) return false
+    if ((p.solvedMask & (1 << q)) !== 0 || (p.failedMask & (1 << q)) !== 0) return false
+    p.failedMask |= 1 << q
+    return true
+  }
+
   async advancePlayer(roomId: string, playerId: string, q: number, now: number) {
     const room = this.rooms.get(roomId)
     const p = this.players.get(playerId)
     if (!room || !p || p.roomId !== roomId) return null
     if (room.status !== 'running' || room.currentQ !== q || room.revealed) return null
-    if ((p.solvedMask & (1 << q)) !== 0) return null
+    if ((p.solvedMask & (1 << q)) !== 0 || (p.failedMask & (1 << q)) !== 0) return null
     p.progress += 1
     p.solvedMask |= 1 << q
     p.lastCorrectAt = now
@@ -94,7 +104,7 @@ export class MemoryStore implements Store {
     this.submissions.delete(roomId)
     for (const p of this.players.values()) {
       if (p.roomId !== roomId) continue
-      p.progress = 0; p.solvedMask = 0; p.lastCorrectAt = null; p.finishedAt = null; p.lastSubmitAt = null
+      p.progress = 0; p.solvedMask = 0; p.failedMask = 0; p.lastCorrectAt = null; p.finishedAt = null; p.lastSubmitAt = null
     }
     const r = this.rooms.get(roomId)
     if (r) Object.assign(r, { status: 'lobby', currentQ: 0, qOpenedAt: null, pausedAt: null, pausedTotalMs: 0, revealed: false })

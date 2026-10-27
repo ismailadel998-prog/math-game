@@ -23,6 +23,7 @@ export interface PlayerRow {
   tokenHash: string
   progress: number
   solvedMask: number
+  failedMask: number
   lastCorrectAt: number | null
   finishedAt: number | null
   joinedAt: number
@@ -61,6 +62,8 @@ export interface Store {
   claimSubmitSlot(playerId: string, now: number, minGapMs: number): Promise<boolean>
   recordSubmission(roomId: string, s: SubmissionRow): Promise<void>
   listSubmissions(roomId: string, questionIdx: number): Promise<SubmissionRow[]>
+  /** Atomic: locks the question after a wrong answer. True only for the student's FIRST attempt. */
+  failPlayer(roomId: string, playerId: string, questionIdx: number): Promise<boolean>
   /** Atomic: +1 checkpoint iff room running, active question matches, and not yet solved. */
   advancePlayer(roomId: string, playerId: string, questionIdx: number, now: number): Promise<PlayerRow | null>
   resetRoom(roomId: string): Promise<void>

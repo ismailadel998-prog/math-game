@@ -50,6 +50,12 @@ export function rankPlayers(players: PlayerRow[]): PlayerRow[] {
   })
 }
 
+/** "869 × 46 = 39,974" — only ever returned after the teacher reveals it, or to a student who has used their one attempt. */
+function working(qi: number): string {
+  const q = PUBLIC_QUESTIONS[qi]
+  return `${q.top} × ${q.bottom} = ${formatAnswer(qi)}`
+}
+
 export function elapsedMs(room: RoomRow, now: number): number {
   if (room.qOpenedAt === null) return 0
   const end = room.pausedAt ?? now
@@ -165,6 +171,7 @@ export async function getState(store: Store, rawCode: string, creds: Creds, now:
         correct: last ? last.isCorrect : null,
         attempts: mine.length,
         solved: (p.solvedMask & (1 << room.currentQ)) !== 0,
+        failed: (p.failedMask & (1 << room.currentQ)) !== 0,
       }
     })
   }
@@ -175,13 +182,15 @@ export async function getState(store: Store, rawCode: string, creds: Creds, now:
       code: room.code, status: room.status, currentQ: room.currentQ,
       question: active ? PUBLIC_QUESTIONS[room.currentQ] : null,
       showLeaderboard: room.showLeaderboard, elapsedMs: elapsedMs(room, now),
-      revealedAnswer: active && room.revealed ? `${PUBLIC_QUESTIONS[room.currentQ].top} × ${PUBLIC_QUESTIONS[room.currentQ].bottom} = ${formatAnswer(room.currentQ)}` : null,
+      revealedAnswer: active && room.revealed ? working(room.currentQ) : null,
       playerCount: players.length, serverNow: now,
     },
     me: meFresh
       ? {
           id: meFresh.id, nickname: meFresh.nickname, car: meFresh.car, progress: meFresh.progress,
           solvedCurrent: (meFresh.solvedMask & (1 << room.currentQ)) !== 0,
+          failedCurrent: active && (meFresh.failedMask & (1 << room.currentQ)) !== 0,
+          missedAnswer: active && (meFresh.failedMask & (1 << room.currentQ)) !== 0 ? working(room.currentQ) : null,
           rank: showBoard ? rankOf.get(meFresh.id) ?? null : null,
         }
       : null,
@@ -209,27 +218,34 @@ export async function submitAnswer(
   if (qi !== room.currentQ) return { result: 'stale' }
   if (room.revealed) return { result: 'revealed' }
   if ((player.solvedMask & (1 << qi)) !== 0) return { result: 'already_solved', progress: player.progress }
+  if ((player.failedMask & (1 << qi)) !== 0) return { result: 'already_failed', correctAnswer: working(qi) } // one attempt only
 
   const parsed = parseAnswer(body.answer)
-  if (parsed === null) throw new GameError(400, 'invalid_answer', 'Enter a whole number, like 1234 or 1,234.')
+  if (parsed === null) throw new GameError(400, 'invalid_answer', 'Enter a whole number, like 1234 or 1,234.') // not an attempt
 
   if (!(await store.claimSubmitSlot(player.id, now, MIN_SUBMIT_GAP_MS))) return { result: 'too_fast' }
 
-  const correct = isCorrect(qi, parsed)
-  await store.recordSubmission(room.id, {
-    playerId: player.id, questionIdx: qi, answer: body.answer.trim().slice(0, 20), isCorrect: correct, createdAt: now,
-  })
-  if (!correct) return { result: 'incorrect' }
-
-  const advanced = await store.advancePlayer(room.id, player.id, qi, now)
-  if (!advanced) {
-    // Lost a race: duplicate submit, or the teacher paused / moved on in the meantime.
+  const text = body.answer.trim().slice(0, 20)
+  // Whatever happens next, the first atomic outcome wins: either this student is locked out (wrong)
+  // or advanced (right). A concurrent second submission can never produce the other outcome.
+  const lostRace = async (): Promise<SubmitResult> => {
     const [r2, p2] = await Promise.all([store.getRoomByCode(room.code), store.getPlayer(room.id, player.id)])
     if (r2 && r2.status === 'paused') return { result: 'paused' }
     if (r2 && r2.revealed) return { result: 'revealed' }
     if (r2 && (r2.status !== 'running' || r2.currentQ !== qi)) return { result: 'stale' }
+    if (p2 && (p2.failedMask & (1 << qi)) !== 0) return { result: 'already_failed', correctAnswer: working(qi) }
     return { result: 'already_solved', progress: p2?.progress ?? player.progress }
   }
+
+  if (!isCorrect(qi, parsed)) {
+    if (!(await store.failPlayer(room.id, player.id, qi))) return lostRace()
+    await store.recordSubmission(room.id, { playerId: player.id, questionIdx: qi, answer: text, isCorrect: false, createdAt: now })
+    return { result: 'incorrect', correctAnswer: working(qi) }
+  }
+
+  const advanced = await store.advancePlayer(room.id, player.id, qi, now)
+  if (!advanced) return lostRace()
+  await store.recordSubmission(room.id, { playerId: player.id, questionIdx: qi, answer: text, isCorrect: true, createdAt: now })
 
   const all = await store.listPlayers(room.id)
   if (all.length > 0 && all.every((p) => p.progress >= TOTAL_QUESTIONS)) {

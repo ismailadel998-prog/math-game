@@ -44,7 +44,7 @@ Supabase (Postgres + Realtime, free tier) · deploys on Vercel.
 |---|---|
 | Same question, same order for everyone; teacher opens questions | `control` → `next` / `goto` |
 | Only the **active** question can be answered; no skipping ahead, no late answers | `submitAnswer` → `stale` |
-| Wrong answer never advances; unlimited retries while the question is active | `submitAnswer` |
+| **One attempt per question.** A wrong answer locks that question for the student, shows them the correct answer and tells them to write it in their math book (no retry). Never advances the car | `submitAnswer`, SQL `fail_player` |
 | Correct answer = exactly **+1** checkpoint, once per question per student | SQL `advance_player` |
 | Duplicate / double-click / parallel submits can't double-advance | atomic update + `already_solved` |
 | Pause blocks new answers; resume keeps all progress and the question timer | `pause` / `resume` |
@@ -60,8 +60,8 @@ Supabase (Postgres + Realtime, free tier) · deploys on Vercel.
 1. Go to <https://supabase.com> → **New project** (free plan). Pick any name/region, set a DB password.
 2. Open **SQL Editor → New query**, paste the entire contents of
    [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql), and click **Run**.
-   Then do the same with [`supabase/migrations/0002_reveal.sql`](supabase/migrations/0002_reveal.sql)
-   (adds the *Reveal answer* feature). Both are safe to run twice.
+   Then do the same with [`0002_reveal.sql`](supabase/migrations/0002_reveal.sql) (*Reveal answer*) and
+   [`0003_one_attempt.sql`](supabase/migrations/0003_one_attempt.sql) (*one attempt per question*). All are safe to run twice.
 3. Open **Project Settings → API** and copy:
    * **Project URL** → `NEXT_PUBLIC_SUPABASE_URL`
    * **anon public** key → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
@@ -120,7 +120,7 @@ Or with the CLI: `npm i -g vercel && vercel` (then add the env vars with `vercel
 3. Students open the link (or the site → type the code), choose a **nickname** and **car**, and wait. You
    see them appear live.
 4. Press **START RACE**. Everyone sees **Question 15**. Students solve on paper, type the answer and
-   press **Submit**. Wrong answers say "Not quite" and can be retried; correct answers move the car.
+   press **Submit**. A wrong answer ends that student's try: they're shown the correct answer and asked to write it in their math book. A correct answer moves the car.
 5. Watch the **Student Answers** table (what each student typed, correct or retry, checkpoints, online/offline).
 6. When ready, press **NEXT QUESTION** (or jump with the 15–22 selector). Use **PAUSE** to hold the room
    (answers are blocked) and **RESUME** to continue. Use the leaderboard switch to hide rankings from

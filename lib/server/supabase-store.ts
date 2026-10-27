@@ -12,7 +12,7 @@ const toRoom = (r: any): RoomRow => ({
 })
 const toPlayer = (p: any): PlayerRow => ({
   id: p.id, roomId: p.room_id, nickname: p.nickname, car: p.car, tokenHash: p.token_hash,
-  progress: p.progress, solvedMask: p.solved_mask, lastCorrectAt: ms(p.last_correct_at),
+  progress: p.progress, solvedMask: p.solved_mask, failedMask: p.failed_mask ?? 0, lastCorrectAt: ms(p.last_correct_at),
   finishedAt: ms(p.finished_at), joinedAt: ms(p.joined_at)!, lastSeenAt: ms(p.last_seen_at)!,
   lastSubmitAt: ms(p.last_submit_at),
 })
@@ -117,6 +117,13 @@ export class SupabaseStore implements Store {
       playerId: r.player_id, questionIdx: r.question_idx, answer: r.answer_text,
       isCorrect: r.is_correct, createdAt: ms(r.created_at)!,
     }))
+  }
+
+  async failPlayer(roomId: string, playerId: string, questionIdx: number) {
+    const { data, error } = await this.db.rpc('fail_player', { p_room: roomId, p_player: playerId, p_q: questionIdx })
+    if (error) fail('failPlayer', error)
+    const rows = Array.isArray(data) ? data : data ? [data] : []
+    return rows.length > 0
   }
 
   async advancePlayer(roomId: string, playerId: string, questionIdx: number, now: number) {

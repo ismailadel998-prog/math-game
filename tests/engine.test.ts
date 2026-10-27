@@ -78,14 +78,59 @@ describe('race engine', () => {
     expect(s.room.status).toBe('finished') // everyone finished → auto-finish
   })
 
-  it('wrong answers never advance the car and can be retried', async () => {
+  it('one attempt only: a wrong answer locks the question, shows the correct answer, and never advances the car', async () => {
     const { code, teacher, ps } = await setup()
     await control(store, code, teacher, { action: 'start' }, t)
-    for (const wrong of ['1', '60796', '60,794', '6079']) {
-      expect(await submitAnswer(store, code, ps[0].creds, { questionIndex: 0, answer: wrong }, tick())).toEqual({ result: 'incorrect' })
+    const before = await getState(store, code, ps[0].creds, t)
+    expect(before.me).toMatchObject({ failedCurrent: false, missedAnswer: null })
+
+    expect(await submitAnswer(store, code, ps[0].creds, { questionIndex: 0, answer: '60796' }, tick()))
+      .toEqual({ result: 'incorrect', correctAnswer: '6,755 × 9 = 60,795' })
+    // no retry: even the correct answer is now refused, and so is another wrong one
+    expect(await submitAnswer(store, code, ps[0].creds, { questionIndex: 0, answer: '60,795' }, tick()))
+      .toEqual({ result: 'already_failed', correctAnswer: '6,755 × 9 = 60,795' })
+    expect(await submitAnswer(store, code, ps[0].creds, { questionIndex: 0, answer: '1' }, tick()))
+      .toMatchObject({ result: 'already_failed' })
+    const after = await getState(store, code, ps[0].creds, t)
+    expect(after.me).toMatchObject({ progress: 0, failedCurrent: true, missedAnswer: '6,755 × 9 = 60,795' })
+
+    // the other student is unaffected and still can't see the answer
+    const other = await getState(store, code, ps[1].creds, t)
+    expect(other.me).toMatchObject({ failedCurrent: false, missedAnswer: null })
+    expect(JSON.stringify(other)).not.toContain('60,795')
+    expect(await submitAnswer(store, code, ps[1].creds, { questionIndex: 0, answer: '60795' }, tick())).toMatchObject({ result: 'correct', progress: 1 })
+
+    // next question: a fresh single attempt
+    await control(store, code, teacher, { action: 'next', fromQ: 0 }, tick())
+    const q16 = await getState(store, code, ps[0].creds, t)
+    expect(q16.me).toMatchObject({ failedCurrent: false, missedAnswer: null })
+    expect(JSON.stringify(q16)).not.toContain('60,795')
+    expect(await submitAnswer(store, code, ps[0].creds, { questionIndex: 1, answer: answerOf(1) }, tick())).toMatchObject({ result: 'correct', progress: 1 })
+  })
+
+  it('one attempt only: a wrong and a correct submission sent at the same instant produce exactly one outcome', async () => {
+    for (const order of ['wrong-first', 'correct-first'] as const) {
+      const { code, teacher, ps } = await setup(['Solo'])
+      await control(store, code, teacher, { action: 'start' }, t)
+      const now = tick()
+      // bypass the per-player rate limit so both really race the atomic step
+      await store.claimSubmitSlot(ps[0].playerId, 0, 0)
+      const calls = order === 'wrong-first' ? ['60796', answerOf(0)] : [answerOf(0), '60796']
+      const results = await Promise.all(calls.map((a) => submitAnswer(store, code, ps[0].creds, { questionIndex: 0, answer: a }, now + 1_000)))
+      const s = await getState(store, code, ps[0].creds, now + 2_000)
+      const advanced = results.some((r) => r.result === 'correct')
+      // never both: progress 1 XOR failed
+      expect(s.me!.progress === 1 ? !s.me!.failedCurrent : s.me!.failedCurrent).toBe(true)
+      expect(advanced).toBe(s.me!.progress === 1)
     }
-    expect((await getState(store, code, ps[0].creds, t)).me?.progress).toBe(0)
-    expect(await submitAnswer(store, code, ps[0].creds, { questionIndex: 0, answer: '60,795' }, tick())).toMatchObject({ result: 'correct', progress: 1 })
+  })
+
+  it('invalid (non-numeric) input is not an attempt', async () => {
+    const { code, teacher, ps } = await setup()
+    await control(store, code, teacher, { action: 'start' }, t)
+    await expect(submitAnswer(store, code, ps[0].creds, { questionIndex: 0, answer: 'sixty' }, tick())).rejects.toMatchObject({ status: 400 })
+    expect((await getState(store, code, ps[0].creds, t)).me).toMatchObject({ failedCurrent: false })
+    expect(await submitAnswer(store, code, ps[0].creds, { questionIndex: 0, answer: answerOf(0) }, tick())).toMatchObject({ result: 'correct' })
   })
 
   it('malformed answers are rejected with 400 and not recorded', async () => {
@@ -110,13 +155,13 @@ describe('race engine', () => {
     expect((await getState(store, code, ps[0].creds, t)).me?.progress).toBe(1)
   })
 
-  it('rate-limits rapid submissions', async () => {
-    const { code, teacher, ps } = await setup()
-    await control(store, code, teacher, { action: 'start' }, t)
+  it('rate limiter: a second submission within the minimum gap is refused (atomic slot claim)', async () => {
+    const { ps } = await setup()
     const now = tick()
-    expect(await submitAnswer(store, code, ps[0].creds, { questionIndex: 0, answer: '1' }, now)).toEqual({ result: 'incorrect' })
-    expect(await submitAnswer(store, code, ps[0].creds, { questionIndex: 0, answer: answerOf(0) }, now + 10)).toEqual({ result: 'too_fast' })
-    expect((await getState(store, code, ps[0].creds, t)).me?.progress).toBe(0)
+    expect(await store.claimSubmitSlot(ps[0].playerId, now, MIN_SUBMIT_GAP_MS)).toBe(true)
+    expect(await store.claimSubmitSlot(ps[0].playerId, now + 10, MIN_SUBMIT_GAP_MS)).toBe(false)
+    expect(await store.claimSubmitSlot(ps[1].playerId, now + 10, MIN_SUBMIT_GAP_MS)).toBe(true) // per player
+    expect(await store.claimSubmitSlot(ps[0].playerId, now + MIN_SUBMIT_GAP_MS + 1, MIN_SUBMIT_GAP_MS)).toBe(true)
   })
 
   it('prevents skipping: only the active question is accepted; stale requests are refused', async () => {
@@ -226,7 +271,7 @@ describe('race engine', () => {
   })
 
   it('rankPlayers: finishers ordered by completion time', () => {
-    const base = { roomId: 'r', car: 0, tokenHash: '', solvedMask: 255, joinedAt: 1, lastSeenAt: 1, lastSubmitAt: null, nickname: 'x' }
+    const base = { roomId: 'r', car: 0, tokenHash: '', solvedMask: 255, failedMask: 0, joinedAt: 1, lastSeenAt: 1, lastSubmitAt: null, nickname: 'x' }
     const ranked = rankPlayers([
       { ...base, id: 'slow', progress: 8, lastCorrectAt: 900, finishedAt: 900 },
       { ...base, id: 'fast', progress: 8, lastCorrectAt: 100, finishedAt: 100 },
@@ -253,7 +298,7 @@ describe('race engine', () => {
     await submitAnswer(store, code, ps[0].creds, { questionIndex: 0, answer: '58,295' }, tick())
     await submitAnswer(store, code, ps[1].creds, { questionIndex: 0, answer: '60,795' }, tick())
     const rows = (await getState(store, code, teacher, t)).answers!
-    expect(rows.find((r) => r.nickname === 'Ava')).toMatchObject({ answer: '58,295', correct: false, attempts: 1, solved: false })
+    expect(rows.find((r) => r.nickname === 'Ava')).toMatchObject({ answer: '58,295', correct: false, attempts: 1, solved: false, failed: true })
     expect(rows.find((r) => r.nickname === 'Ben')).toMatchObject({ answer: '60,795', correct: true, solved: true })
   })
 

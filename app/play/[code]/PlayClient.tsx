@@ -51,7 +51,7 @@ function JoinHere({ code, onJoined }: { code: string; onJoined: () => void }) {
   )
 }
 
-interface FeedbackState { correct: boolean; progress: number; rank: number | null; finished: boolean }
+interface FeedbackState { correct: boolean; progress: number; rank: number | null; finished: boolean; correctAnswer?: string | null }
 
 function Game({ code, session, onLost }: { code: string; session: PlayerSession; onLost: () => void }) {
   const router = useRouter()
@@ -88,7 +88,8 @@ function Game({ code, session, onLost }: { code: string; session: PlayerSession;
       const r = await submitApi(code, auth, room.currentQ, answer)
       switch (r.result) {
         case 'correct': sound.play('correct'); setFeedback({ correct: true, progress: r.progress, rank: r.rank, finished: r.finished }); break
-        case 'incorrect': sound.play('wrong'); setFeedback({ correct: false, progress: me!.progress, rank: me!.rank, finished: false }); break
+        case 'incorrect': sound.play('wrong'); setFeedback({ correct: false, progress: me!.progress, rank: me!.rank, finished: false, correctAnswer: r.correctAnswer }); break
+        case 'already_failed': setNotice('You already used your one try on this question.'); break
         case 'already_solved': setNotice('You already solved this question.'); break
         case 'paused': setNotice('The teacher paused the race. Hang tight!'); break
         case 'revealed': setNotice('The teacher revealed the answer, so this question is closed.'); break
@@ -104,8 +105,8 @@ function Game({ code, session, onLost }: { code: string; session: PlayerSession;
 
   if (feedback) {
     return <>{reconnecting}<Feedback correct={feedback.correct} nickname={me.nickname} car={me.car} progress={feedback.correct ? feedback.progress : me.progress}
-      rank={feedback.correct ? feedback.rank : me.rank} finished={feedback.finished}
-      onContinue={() => { setFeedback(null); setAnswer('') }} onRetry={() => { setFeedback(null); setAnswer('') }} /></>
+      rank={feedback.correct ? feedback.rank : me.rank} finished={feedback.finished} correctAnswer={feedback.correctAnswer}
+      onContinue={() => { setFeedback(null); setAnswer('') }} /></>
   }
 
   if (room.status === 'finished') {
@@ -133,7 +134,7 @@ function Game({ code, session, onLost }: { code: string; session: PlayerSession;
 
   const q = room.question!
   const paused = room.status === 'paused'
-  const canAnswer = room.status === 'running' && !me.solvedCurrent && !room.revealedAnswer
+  const canAnswer = room.status === 'running' && !me.solvedCurrent && !me.failedCurrent && !room.revealedAnswer
 
   if (view === 'board' && players) {
     return (
@@ -163,7 +164,9 @@ function Game({ code, session, onLost }: { code: string; session: PlayerSession;
           <div className="instruction"><span aria-hidden>✎</span> Solve on paper first, then enter your answer.</div>
           <div className="problem" role="img" aria-label={`${q.top} times ${q.bottom}`}><span>{q.top}</span><span>×&nbsp; {q.bottom}</span><i /></div>
           {paused && <div className="paused-banner" role="status">⏸ The teacher paused the race</div>}
-          {room.revealedAnswer ? (
+          {me.failedCurrent && me.missedAnswer ? (
+            <div className="missed-banner" role="status">✎ NOT THIS TIME. THE CORRECT ANSWER IS<b>{me.missedAnswer}</b><small>Write it in your math book, then wait for the next question.</small></div>
+          ) : room.revealedAnswer ? (
             <div className="reveal-banner" role="status">THE CORRECT ANSWER<b>{room.revealedAnswer}</b><small>{me.solvedCurrent ? 'You got this one!' : 'This question is closed. Check your working on paper.'}</small></div>
           ) : me.solvedCurrent ? (
             <div className="solved-banner" role="status">✓ Solved! Nice work.<small>Waiting for the teacher to open the next question…</small></div>

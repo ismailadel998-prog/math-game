@@ -116,7 +116,7 @@ function Dashboard({ code, token, onLost }: { code: string; token: string; onLos
               <span>{active ? `NOW SHOWING: QUESTION ${q.number}` : `UP FIRST: QUESTION ${q.number}`}</span>
               <b>{q.top} × {q.bottom}</b>
               {room.revealedAnswer && <div className="reveal-banner" style={{ margin: '10px 0 0' }}>ANSWER<b>{room.revealedAnswer}</b><small>Students see this now. The question is closed.</small></div>}
-              <small>{active ? `Open for ${status === 'paused' ? 'PAUSED' : formatClock(elapsed)} • students must answer correctly to advance` : 'Press START to open this question to students'}</small>
+              <small>{active ? `Open for ${status === 'paused' ? 'PAUSED' : formatClock(elapsed)} • one try per student` : 'Press START to open this question to students'}</small>
             </div>
             <div className="toggles">
               <div><span>Show live leaderboard to students</span>
@@ -131,13 +131,13 @@ function Dashboard({ code, token, onLost }: { code: string; token: string; onLos
             {active
               ? answers.map((a) => {
                   const p = byId.get(a.playerId)
-                  const cls = a.solved ? 'correct' : a.correct === false ? 'wrong' : 'wait'
+                  const cls = a.solved ? 'correct' : a.failed ? 'wrong' : 'wait'
                   return (
                     <div className="answer-row" key={a.playerId}>
                       <span className="student-dot" style={{ background: carColor(a.car) }}>{a.nickname[0]?.toUpperCase()}</span>
                       <b>{a.nickname}<span className={`conn-dot ${p?.connected ? 'on' : ''}`} title={p?.connected ? 'Online' : 'Disconnected'} role="img" aria-label={p?.connected ? 'online' : 'offline'} /></b>
-                      <span>{a.answer ?? 'Thinking…'}{a.attempts > 1 ? ` (${a.attempts}×)` : ''}</span>
-                      <i className={cls}>{a.solved ? '✓ CORRECT' : a.correct === false ? '× RETRY' : '•••'}</i>
+                      <span>{a.answer ?? 'Thinking…'}</span>
+                      <i className={cls}>{a.solved ? '✓ CORRECT' : a.failed ? '× WRONG' : '•••'}</i>
                       <span className="prog">{p?.progress ?? 0}/{TOTAL_QUESTIONS}</span>
                     </div>
                   )

@@ -58,6 +58,9 @@ header{height:78px;padding:0 clamp(18px,4vw,64px);display:flex;align-items:cente
 .snd button.on{background:#e6f1ff;color:var(--blue2);border-color:var(--blue)}
 .reveal-banner{margin:14px 0;padding:18px;border-radius:14px;background:#fff8dc;border:2px solid #ffd43b;color:#5b4900;text-align:center;font-weight:900}
 .reveal-banner b{display:block;margin-top:6px;font:800 clamp(26px,6vw,34px) var(--font-baloo);color:var(--ink);letter-spacing:.03em}
+.missed-banner{margin:14px 0;padding:18px;border-radius:14px;background:#fff0f1;border:2px solid #ffb3ba;color:#a3202e;text-align:center;font-weight:900;font-size:13px;letter-spacing:.04em}
+.missed-banner b{display:block;margin:6px 0;font:800 clamp(26px,6vw,34px) var(--font-baloo);color:var(--ink);letter-spacing:.03em}
+.missed-banner small{display:block;color:#7a2a33;font-weight:700;font-size:13px;letter-spacing:0}
 .reveal-banner small{display:block;margin-top:6px;color:#7a6500;font-weight:700}
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}

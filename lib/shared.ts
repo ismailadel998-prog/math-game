@@ -42,6 +42,8 @@ export interface AnswerRow {
   correct: boolean | null
   attempts: number
   solved: boolean
+  /** Answered wrong: that question is locked for this student (one attempt only). */
+  failed: boolean
 }
 
 export interface RoomView {
@@ -63,6 +65,10 @@ export interface MeView {
   car: number
   progress: number
   solvedCurrent: boolean
+  /** True after a wrong answer on the active question: no retry. */
+  failedCurrent: boolean
+  /** The full working, e.g. "869 × 46 = 39,974". Only set after this student has used their one attempt. */
+  missedAnswer: string | null
   rank: number | null
 }
 
@@ -76,7 +82,8 @@ export interface StateResponse {
 
 export type SubmitResult =
   | { result: 'correct'; progress: number; rank: number | null; finished: boolean }
-  | { result: 'incorrect' }
+  | { result: 'incorrect'; correctAnswer: string }
+  | { result: 'already_failed'; correctAnswer: string }
   | { result: 'already_solved'; progress: number }
   | { result: 'paused' | 'not_running' | 'stale' | 'too_fast' | 'revealed' }
 

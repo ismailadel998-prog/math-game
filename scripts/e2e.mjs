@@ -104,15 +104,29 @@ ok('music on/off button works')
 await ava.screenshot({ path: `${SHOTS}/03-student-race.png`, fullPage: true })
 await ben.screenshot({ path: `${SHOTS}/04-student-race-mobile.png`, fullPage: true })
 
-// ── 4. wrong answer → no advance; then correct
-await answer(ava, '58,295')
-await ava.waitForSelector('text=NOT QUITE!')
-await ava.screenshot({ path: `${SHOTS}/05-feedback-wrong.png` })
-assert.match(await txt(ava, '.feedback-road span'), /Checkpoint 0 of 8/)
-await ava.click('text=TRY THIS QUESTION AGAIN')
-ok('incorrect answer shows "Not quite", car stays at checkpoint 0')
-await teacher.waitForSelector('text=× RETRY')
-ok('teacher dashboard shows the incorrect submission')
+// ── 4. ONE attempt: Ben answers wrong → sees the correct answer, told to write it in his book, no retry
+await answer(ben, '58,295')
+await ben.waitForSelector('text=NOT QUITE!')
+assert.match(await txt(ben, '.feedback-card'), /6,755 × 9 = 60,795/)
+assert.match(await txt(ben, '.feedback-card'), /math book/i)
+assert.ok(!(await ben.getByText('TRY THIS QUESTION AGAIN').count()), 'retry button should be gone')
+assert.match(await txt(ben, '.feedback-road span'), /Checkpoint 0 of 8/)
+await ben.screenshot({ path: `${SHOTS}/05-feedback-wrong-mobile.png`, fullPage: true })
+ok('wrong answer: Ben is shown "6,755 × 9 = 60,795" and told to write it in his math book; no retry button')
+await ben.click('text=I WROTE IT IN MY BOOK')
+await ben.waitForSelector('.missed-banner')
+assert.ok(!(await ben.locator('input[aria-label="Your answer"]').count()), 'input should be gone after a wrong answer')
+assert.match(await txt(ben, '.missed-banner'), /60,795/)
+ok('after continuing, Ben\'s question stays locked (banner with the answer, no input) until the teacher moves on')
+await teacher.waitForSelector('text=× WRONG')
+ok('teacher dashboard shows Ben as WRONG')
+
+// the server enforces it too: Ben's correct answer now is refused and does not advance him
+const bcreds = await bctx.pages()[0].evaluate((c) => JSON.parse(localStorage.getItem(`mr:player:${c}`)), code)
+const bh = { 'x-player-id': bcreds.playerId, 'x-player-token': bcreds.playerToken }
+const postB = (body) => fetch(`${BASE}/api/rooms/${code}/submit`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...bh }, body: JSON.stringify(body) }).then((r) => r.json())
+assert.equal((await postB({ questionIndex: 0, answer: '60795' })).result, 'already_failed')
+ok('server refuses Ben\'s later correct answer ("already_failed"): one attempt only')
 
 await ava.waitForTimeout(700)
 await answer(ava, '60,795')
@@ -123,14 +137,9 @@ await ava.click('text=CONTINUE RACING')
 await ava.waitForSelector('.solved-banner')
 ok('correct answer (with comma) advances Ava to checkpoint 1 and shows the solved state')
 
-await answer(ben, '60795')
-await ben.waitForSelector('text=CORRECT!')
-await ben.click('text=CONTINUE RACING')
-ok('correct answer without comma accepted for Ben')
-
-await teacher.waitForFunction(() => document.querySelectorAll('.answer-row .correct').length === 2)
+await teacher.waitForFunction(() => document.querySelectorAll('.answer-row .correct').length === 1 && document.querySelectorAll('.answer-row .wrong').length === 1)
 await teacher.screenshot({ path: `${SHOTS}/07-teacher-running.png`, fullPage: true })
-ok('teacher sees both answers marked correct')
+ok('teacher sees one correct and one wrong answer')
 
 // leaderboard: Ava was accepted first -> rank 1
 await ava.waitForSelector('.leader-row.me')
@@ -191,8 +200,9 @@ ok('resume re-enables answering, progress intact')
 // ── 8. reconnection: reload + offline/online
 await ben.reload()
 await ben.waitForSelector('.problem')
-assert.match(await txt(ben, '.track-labels'), /✓/)
-ok('Ben reloaded the page and recovered his progress (checkpoint 1)')
+assert.match(await txt(ben, '.challenge-top'), /QUESTION 16/)
+assert.equal((await ben.locator('.track-labels .done').count()), 0)
+ok('Ben reloaded the page and rejoined at Question 16 with his progress (0 checkpoints) intact')
 await bctx.setOffline(true)
 await ben.waitForSelector('text=reconnecting', { timeout: 15000 })
 await bctx.setOffline(false)
@@ -209,21 +219,18 @@ for (let i = 1; i < 8; i++) {
   assert.equal((await txt(ava, '.problem span:nth-child(1)')).trim(), Q[i][0])
   for (const p of [ava, ben]) {
     await p.waitForTimeout(600)
-    await answer(p, String(Number(Q[i][2]) + 1)) // wrong first
-    await p.waitForSelector('text=NOT QUITE!')
-    await p.click('text=TRY THIS QUESTION AGAIN')
-    await p.waitForTimeout(600)
     await answer(p, Q[i][2])
-    await p.waitForSelector(i === 7 ? 'text=YOU CROSSED THE FINISH LINE!' : 'text=CORRECT!')
-    if (i < 7) await p.click('text=CONTINUE RACING')
+    await p.waitForSelector(p === ava && i === 7 ? 'text=YOU CROSSED THE FINISH LINE!' : 'text=CORRECT!')
+    if (!(p === ava && i === 7)) await p.click('text=CONTINUE RACING')
   }
   if (i === 7) await ava.screenshot({ path: `${SHOTS}/09-feedback-finish.png` })
 }
-ok('all 8 questions (15–22): wrong answer rejected, correct answer accepted, for both students')
+ok('Q16–Q22 answered correctly through the UI by both students')
 
-// ── 10. winner screen & final rankings
+// ── 10. teacher ends the race (Ben has 7/8, so it does not auto-finish) → winner screen & final rankings
+await teacher.click('button:has-text("END RACE")')
+await teacher.click('role=dialog >> text=End race')
 await ava.click('text=SEE RESULTS')
-await ben.click('text=SEE RESULTS')
 for (const p of [ava, ben, teacher]) {
   await p.waitForSelector('text=CHAMPION!')
   await p.waitForSelector('text=FINAL RANKINGS')
@@ -231,11 +238,12 @@ for (const p of [ava, ben, teacher]) {
 const final = (await ava.locator('.final-list .leader-row .leader-name b').allInnerTexts()).map((s) => s.replace(' (you)', ''))
 assert.deepEqual(final, ['Ava', 'Ben'])
 assert.match(await txt(ava, '.final-list'), /8 of 8 solved/)
+assert.match(await txt(ava, '.final-list'), /7 of 8 solved/)
 await ava.waitForTimeout(2200) // let podium + confetti animations play
 await ava.screenshot({ path: `${SHOTS}/10-winner.png` })
 await ben.screenshot({ path: `${SHOTS}/11-winner-mobile.png` })
 await teacher.screenshot({ path: `${SHOTS}/12-teacher-results.png` })
-ok('winner screen + final rankings shown to students and teacher (Ava 1st, Ben 2nd, 8/8)')
+ok('winner screen + final rankings shown to students and teacher (Ava 1st with 8/8, Ben 2nd with 7/8)')
 
 // ── 11. reset with confirmation
 await teacher.click('text=RESET & RACE AGAIN')

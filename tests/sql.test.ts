@@ -25,11 +25,49 @@ describe('supabase/migrations/0001_init.sql (run on real Postgres via PGlite)', 
     await db.exec(`create role service_role; create role anon; create role authenticated;`)
     await db.exec(readFileSync('supabase/migrations/0001_init.sql', 'utf8'))
     await db.exec(readFileSync('supabase/migrations/0002_reveal.sql', 'utf8'))
+    await db.exec(readFileSync('supabase/migrations/0003_one_attempt.sql', 'utf8'))
   })
 
   it('migrations are re-runnable (idempotent)', async () => {
     await db.exec(readFileSync('supabase/migrations/0001_init.sql', 'utf8'))
     await db.exec(readFileSync('supabase/migrations/0002_reveal.sql', 'utf8'))
+    await db.exec(readFileSync('supabase/migrations/0003_one_attempt.sql', 'utf8'))
+  })
+
+  it('0003: fail_player locks a question once; afterwards neither fail nor advance can succeed', async () => {
+    const r = await room('running', 3)
+    const p = await player(r, 'Ava')
+    const fail = () => db.query(`select * from fail_player($1,$2,$3)`, [r, p, 3])
+    expect((await fail()).rows).toHaveLength(1)
+    expect((await fail()).rows).toHaveLength(0)            // second wrong answer: no-op
+    expect((await advance(r, p, 3)).rows).toHaveLength(0)  // correct answer after a wrong one: refused
+    const row = await db.query<{ progress: number; failed_mask: number }>(`select progress, failed_mask from players where id=$1`, [p])
+    expect(row.rows[0]).toEqual({ progress: 0, failed_mask: 8 })
+  })
+
+  it('0003: a correct answer first means a later wrong answer cannot lock; other questions unaffected', async () => {
+    const r = await room('running', 1)
+    const p = await player(r, 'Ava')
+    expect((await advance(r, p, 1)).rows).toHaveLength(1)
+    expect((await db.query(`select * from fail_player($1,$2,$3)`, [r, p, 1])).rows).toHaveLength(0)
+    await db.query(`update rooms set current_q = 2 where id=$1`, [r])
+    expect((await db.query(`select * from fail_player($1,$2,$3)`, [r, p, 2])).rows).toHaveLength(1)
+    expect((await db.query(`select * from fail_player($1,$2,$3)`, [r, p, 1])).rows).toHaveLength(0) // not the active question
+  })
+
+  it('0003: fail_player refused when not running / revealed / other room; reset clears failed_mask', async () => {
+    const paused = await room('paused', 0); const pp = await player(paused, 'A')
+    expect((await db.query(`select * from fail_player($1,$2,0)`, [paused, pp])).rows).toHaveLength(0)
+    const rev = await room('running', 0); const pr = await player(rev, 'A')
+    await db.query(`update rooms set revealed=true where id=$1`, [rev])
+    expect((await db.query(`select * from fail_player($1,$2,0)`, [rev, pr])).rows).toHaveLength(0)
+    const r1 = await room('running', 0); const r2 = await room('running', 0); const p2 = await player(r2, 'Z')
+    expect((await db.query(`select * from fail_player($1,$2,0)`, [r1, p2])).rows).toHaveLength(0)
+    const p = await player(r1, 'Ava')
+    await db.query(`select * from fail_player($1,$2,0)`, [r1, p])
+    await db.query(`select reset_room($1)`, [r1])
+    const row = await db.query<{ failed_mask: number }>(`select failed_mask from players where id=$1`, [p])
+    expect(row.rows[0].failed_mask).toBe(0)
   })
 
   it('0002: advance_player is refused once the answer is revealed; reset_room clears it', async () => {
