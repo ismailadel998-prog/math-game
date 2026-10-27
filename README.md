@@ -69,6 +69,10 @@ Supabase (Postgres + Realtime, free tier) · deploys on Vercel.
 
 > Realtime needs no extra switches: the game uses *Broadcast*, which is enabled by default.
 
+> **No computer? One-tap alternative.** If you connected Supabase through the Vercel integration, open
+> `https://<your-site>/setup` on any device, enter your teacher passcode and tap **Update database**. It runs
+> both files above for you (passcode-protected, fixed SQL only, TLS verified against Supabase's root CA).
+
 ### 2. Run locally (optional)
 ```bash
 npm install
