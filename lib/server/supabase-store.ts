@@ -8,7 +8,7 @@ const ms = (s: string | null) => (s === null ? null : new Date(s).getTime())
 const toRoom = (r: any): RoomRow => ({
   id: r.id, code: r.code, teacherTokenHash: r.teacher_token_hash, status: r.status, currentQ: r.current_q,
   qOpenedAt: ms(r.q_opened_at), pausedAt: ms(r.paused_at), pausedTotalMs: Number(r.paused_total_ms),
-  showLeaderboard: r.show_leaderboard, createdAt: ms(r.created_at)!,
+  showLeaderboard: r.show_leaderboard, revealed: r.revealed === true, createdAt: ms(r.created_at)!,
 })
 const toPlayer = (p: any): PlayerRow => ({
   id: p.id, roomId: p.room_id, nickname: p.nickname, car: p.car, tokenHash: p.token_hash,
@@ -51,6 +51,7 @@ export class SupabaseStore implements Store {
     if (patch.pausedAt !== undefined) row.paused_at = iso(patch.pausedAt)
     if (patch.pausedTotalMs !== undefined) row.paused_total_ms = patch.pausedTotalMs
     if (patch.showLeaderboard !== undefined) row.show_leaderboard = patch.showLeaderboard
+    if (patch.revealed !== undefined) row.revealed = patch.revealed
     let q = this.db.from('rooms').update(row).eq('id', id)
     if (guard?.status) q = q.in('status', guard.status)
     if (guard?.currentQ !== undefined) q = q.eq('current_q', guard.currentQ)

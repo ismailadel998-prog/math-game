@@ -11,7 +11,7 @@ export class MemoryStore implements Store {
     for (const r of this.rooms.values()) if (r.code === code) return null
     const room: RoomRow = {
       id: randomUUID(), code, teacherTokenHash, status: 'lobby', currentQ: 0,
-      qOpenedAt: null, pausedAt: null, pausedTotalMs: 0, showLeaderboard: true, createdAt: Date.now(),
+      qOpenedAt: null, pausedAt: null, pausedTotalMs: 0, showLeaderboard: true, revealed: false, createdAt: Date.now(),
     }
     this.rooms.set(room.id, room)
     return { ...room }
@@ -81,7 +81,7 @@ export class MemoryStore implements Store {
     const room = this.rooms.get(roomId)
     const p = this.players.get(playerId)
     if (!room || !p || p.roomId !== roomId) return null
-    if (room.status !== 'running' || room.currentQ !== q) return null
+    if (room.status !== 'running' || room.currentQ !== q || room.revealed) return null
     if ((p.solvedMask & (1 << q)) !== 0) return null
     p.progress += 1
     p.solvedMask |= 1 << q
@@ -97,6 +97,6 @@ export class MemoryStore implements Store {
       p.progress = 0; p.solvedMask = 0; p.lastCorrectAt = null; p.finishedAt = null; p.lastSubmitAt = null
     }
     const r = this.rooms.get(roomId)
-    if (r) Object.assign(r, { status: 'lobby', currentQ: 0, qOpenedAt: null, pausedAt: null, pausedTotalMs: 0 })
+    if (r) Object.assign(r, { status: 'lobby', currentQ: 0, qOpenedAt: null, pausedAt: null, pausedTotalMs: 0, revealed: false })
   }
 }

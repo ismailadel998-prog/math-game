@@ -19,6 +19,12 @@ export function correctAnswerFor(questionIndex: number): number | undefined {
   return ANSWERS[questionIndex]
 }
 
+/** "60,795" — shown ONLY after the teacher reveals the answer. */
+export function formatAnswer(questionIndex: number): string | null {
+  const a = ANSWERS[questionIndex]
+  return a === undefined ? null : a.toLocaleString('en-US')
+}
+
 /** Accepts "60795" or "60,795" (properly grouped). Returns null for anything else. */
 export function parseAnswer(raw: string): number | null {
   const s = raw.trim().replace(/\s+/g, '')

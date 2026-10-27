@@ -51,6 +51,8 @@ export interface RoomView {
   question: PublicQuestion | null
   showLeaderboard: boolean
   elapsedMs: number
+  /** Only set after the teacher presses "Reveal answer", e.g. "6,755 × 9 = 60,795". */
+  revealedAnswer: string | null
   playerCount: number
   serverNow: number
 }
@@ -76,11 +78,12 @@ export type SubmitResult =
   | { result: 'correct'; progress: number; rank: number | null; finished: boolean }
   | { result: 'incorrect' }
   | { result: 'already_solved'; progress: number }
-  | { result: 'paused' | 'not_running' | 'stale' | 'too_fast' }
+  | { result: 'paused' | 'not_running' | 'stale' | 'too_fast' | 'revealed' }
 
 export type ControlAction =
   | { action: 'start' }
   | { action: 'pause' }
+  | { action: 'reveal' }
   | { action: 'resume' }
   | { action: 'next'; fromQ: number }
   | { action: 'goto'; index: number }

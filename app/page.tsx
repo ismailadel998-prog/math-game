@@ -5,9 +5,12 @@ import { useEffect, useState } from 'react'
 import { Header } from '@/components/ui'
 import { HeroCopy, JoinCard } from '@/components/JoinCard'
 import { getLast } from '@/lib/client/session'
+import { useMood, useSoundSetup } from '@/lib/client/useSound'
 
 export default function Home() {
   const router = useRouter()
+  useSoundSetup('student')
+  useMood('lobby')
   const [car, setCar] = useState(0)
   const [last, setLast] = useState<{ role: 'player' | 'teacher'; code: string } | null>(null)
   useEffect(() => { setLast(getLast()) }, [])

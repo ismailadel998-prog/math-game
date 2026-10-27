@@ -2,6 +2,7 @@
 import Link from 'next/link'
 import type { CSSProperties, ReactNode } from 'react'
 import { CAR_COLORS } from '@/lib/shared'
+import { SoundToggle } from './SoundToggle'
 
 export function Button({ children, onClick, kind = 'primary', disabled = false, type = 'button', className = '' }: {
   children: ReactNode; onClick?: () => void; kind?: 'primary' | 'secondary' | 'ghost' | 'danger'
@@ -30,7 +31,7 @@ export function Header({ code, right }: { code?: string; right?: ReactNode }) {
     <header>
       <Link href="/" aria-label="Multiplication Race home" style={{ textDecoration: 'none', color: 'inherit' }}><Logo /></Link>
       {code && <div className="room-pill"><span>ROOM CODE</span><b>{code}</b></div>}
-      <div>{right}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}><SoundToggle />{right}</div>
     </header>
   )
 }

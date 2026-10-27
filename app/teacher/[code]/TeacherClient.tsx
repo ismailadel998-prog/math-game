@@ -4,8 +4,10 @@ import { useEffect, useState } from 'react'
 import { ApiError, controlApi } from '@/lib/client/api'
 import { clearTeacherSession, getTeacherSession } from '@/lib/client/session'
 import { formatClock, useElapsed, useRoom } from '@/lib/client/useRoom'
+import { useMood, useSoundSetup, useStateSounds } from '@/lib/client/useSound'
 import { PUBLIC_QUESTIONS, TOTAL_QUESTIONS, type ControlAction } from '@/lib/shared'
 import { Leaderboard } from '@/components/Leaderboard'
+import { SoundToggle } from '@/components/SoundToggle'
 import { Winner } from '@/components/Winner'
 import { Button, ConfirmModal, Header, Logo, carColor } from '@/components/ui'
 
@@ -28,6 +30,9 @@ function Dashboard({ code, token, onLost }: { code: string; token: string; onLos
   const auth = { teacherToken: token }
   const { state, error, connection, receivedAt, refresh } = useRoom(code, auth, onLost)
   const elapsed = useElapsed(state, receivedAt)
+  useSoundSetup('teacher')
+  useStateSounds(state, 'teacher')
+  useMood(state?.room.status === 'running' ? 'race' : state?.room.status === 'lobby' ? 'lobby' : 'off')
   const [msg, setMsg] = useState('')
   const [pending, setPending] = useState(false)
   const [confirmReset, setConfirmReset] = useState(false)
@@ -75,7 +80,7 @@ function Dashboard({ code, token, onLost }: { code: string; token: string; onLos
 
   return (
     <div className="page teacher-page">
-      <header><Logo /><div className="teacher-label">TEACHER DASHBOARD</div><Link className="btn btn-ghost btn-link" href="/">Home</Link></header>
+      <header><Logo /><div className="teacher-label">TEACHER DASHBOARD</div><div style={{ display: 'flex', alignItems: 'center', gap: 10 }}><SoundToggle /><Link className="btn btn-ghost btn-link" href="/">Home</Link></div></header>
       <main className="teacher-main">
         <div className="share-box">
           <div><small>STUDENTS JOIN WITH ROOM CODE</small><div className="code" aria-label={`Room code ${code.split('').join(' ')}`}>{code}</div></div>
@@ -96,6 +101,7 @@ function Dashboard({ code, token, onLost }: { code: string; token: string; onLos
                 ? <Button onClick={() => void act({ action: 'resume' })} disabled={pending}>▶ RESUME RACE</Button>
                 : <Button onClick={() => void act({ action: 'start' })} disabled={pending || status !== 'lobby'}>▶ START RACE</Button>}
               <Button kind="secondary" onClick={() => void act({ action: 'pause' })} disabled={pending || status !== 'running'}>Ⅱ PAUSE</Button>
+              <Button kind="secondary" onClick={() => void act({ action: 'reveal' })} disabled={pending || !active || !!room.revealedAnswer}>{room.revealedAnswer ? '✓ ANSWER REVEALED' : '👁 REVEAL ANSWER'}</Button>
               <Button kind="secondary" onClick={() => void act({ action: 'next', fromQ: room.currentQ })} disabled={pending || !active || room.currentQ >= TOTAL_QUESTIONS - 1}>
                 {room.currentQ >= TOTAL_QUESTIONS - 1 && active ? 'LAST QUESTION' : 'NEXT QUESTION →'}
               </Button>
@@ -109,6 +115,7 @@ function Dashboard({ code, token, onLost }: { code: string; token: string; onLos
             <div className="teacher-question">
               <span>{active ? `NOW SHOWING: QUESTION ${q.number}` : `UP FIRST: QUESTION ${q.number}`}</span>
               <b>{q.top} × {q.bottom}</b>
+              {room.revealedAnswer && <div className="reveal-banner" style={{ margin: '10px 0 0' }}>ANSWER<b>{room.revealedAnswer}</b><small>Students see this now. The question is closed.</small></div>}
               <small>{active ? `Open for ${status === 'paused' ? 'PAUSED' : formatClock(elapsed)} • students must answer correctly to advance` : 'Press START to open this question to students'}</small>
             </div>
             <div className="toggles">

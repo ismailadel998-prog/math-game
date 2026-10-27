@@ -4,7 +4,7 @@ import {
   normalizeRoomCode,
   type AnswerRow, type ControlAction, type PlayerView, type StateResponse, type SubmitResult,
 } from '../shared'
-import { isCorrect, parseAnswer } from './answers'
+import { formatAnswer, isCorrect, parseAnswer } from './answers'
 import type { PlayerRow, RoomRow, Store } from './types'
 
 export class GameError extends Error {
@@ -175,6 +175,7 @@ export async function getState(store: Store, rawCode: string, creds: Creds, now:
       code: room.code, status: room.status, currentQ: room.currentQ,
       question: active ? PUBLIC_QUESTIONS[room.currentQ] : null,
       showLeaderboard: room.showLeaderboard, elapsedMs: elapsedMs(room, now),
+      revealedAnswer: active && room.revealed ? `${PUBLIC_QUESTIONS[room.currentQ].top} × ${PUBLIC_QUESTIONS[room.currentQ].bottom} = ${formatAnswer(room.currentQ)}` : null,
       playerCount: players.length, serverNow: now,
     },
     me: meFresh
@@ -206,6 +207,7 @@ export async function submitAnswer(
   if (room.status === 'paused') return { result: 'paused' }
   if (room.status !== 'running') return { result: 'not_running' }
   if (qi !== room.currentQ) return { result: 'stale' }
+  if (room.revealed) return { result: 'revealed' }
   if ((player.solvedMask & (1 << qi)) !== 0) return { result: 'already_solved', progress: player.progress }
 
   const parsed = parseAnswer(body.answer)
@@ -224,6 +226,7 @@ export async function submitAnswer(
     // Lost a race: duplicate submit, or the teacher paused / moved on in the meantime.
     const [r2, p2] = await Promise.all([store.getRoomByCode(room.code), store.getPlayer(room.id, player.id)])
     if (r2 && r2.status === 'paused') return { result: 'paused' }
+    if (r2 && r2.revealed) return { result: 'revealed' }
     if (r2 && (r2.status !== 'running' || r2.currentQ !== qi)) return { result: 'stale' }
     return { result: 'already_solved', progress: p2?.progress ?? player.progress }
   }
@@ -247,7 +250,7 @@ export async function control(store: Store, rawCode: string, creds: Creds, a: Co
 
   switch (a.action) {
     case 'start': {
-      const r = await store.updateRoom(room.id, { status: 'running', currentQ: 0, qOpenedAt: now, pausedAt: null, pausedTotalMs: 0 }, { status: ['lobby'] })
+      const r = await store.updateRoom(room.id, { status: 'running', currentQ: 0, qOpenedAt: now, pausedAt: null, pausedTotalMs: 0, ...(room.revealed ? { revealed: false } : {}) }, { status: ['lobby'] })
       if (!r) throw stale()
       return
     }
@@ -268,7 +271,7 @@ export async function control(store: Store, rawCode: string, creds: Creds, a: Co
       const paused = room.status === 'paused'
       const r = await store.updateRoom(
         room.id,
-        { currentQ: a.fromQ + 1, qOpenedAt: now, pausedTotalMs: 0, pausedAt: paused ? now : null },
+        { currentQ: a.fromQ + 1, qOpenedAt: now, pausedTotalMs: 0, pausedAt: paused ? now : null, ...(room.revealed ? { revealed: false } : {}) },
         { status: ['running', 'paused'], currentQ: a.fromQ },
       )
       if (!r) throw stale()
@@ -279,9 +282,14 @@ export async function control(store: Store, rawCode: string, creds: Creds, a: Co
       const paused = room.status === 'paused'
       const r = await store.updateRoom(
         room.id,
-        { currentQ: a.index, qOpenedAt: now, pausedTotalMs: 0, pausedAt: paused ? now : null },
+        { currentQ: a.index, qOpenedAt: now, pausedTotalMs: 0, pausedAt: paused ? now : null, ...(room.revealed ? { revealed: false } : {}) },
         { status: ['running', 'paused'] },
       )
+      if (!r) throw stale()
+      return
+    }
+    case 'reveal': {
+      const r = await store.updateRoom(room.id, { revealed: true }, { status: ['running', 'paused'], currentQ: room.currentQ })
       if (!r) throw stale()
       return
     }

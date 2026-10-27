@@ -17,6 +17,16 @@ const browser = await chromium.launch()
 const tctx = await browser.newContext({ viewport: { width: 1280, height: 900 } })
 const actx = await browser.newContext({ viewport: { width: 1280, height: 900 } })
 const bctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
+// Count oscillators created, to prove music/effects really play (after a user gesture).
+const audioSpy = () => {
+  window.__osc = 0
+  const C = window.AudioContext || window.webkitAudioContext
+  if (!C) return
+  const orig = C.prototype.createOscillator
+  C.prototype.createOscillator = function () { window.__osc++; return orig.call(this) }
+}
+await actx.addInitScript(audioSpy)
+await bctx.addInitScript(audioSpy)
 const [teacher, ava, ben] = await Promise.all([tctx.newPage(), actx.newPage(), bctx.newPage()])
 const errors = []
 for (const [n, p] of [['teacher', teacher], ['ava', ava], ['ben', ben]]) {
@@ -79,6 +89,18 @@ for (const p of [ava, ben]) {
   assert.match(await txt(p, '.challenge-top'), /QUESTION 15/)
 }
 ok('both students see Question 15 (6,755 × 9)')
+await ava.waitForTimeout(1500)
+const osc1 = await ava.evaluate(() => window.__osc)
+assert.ok(osc1 > 10, `background music not playing (oscillators=${osc1})`)
+ok(`background music is playing for students (${osc1} notes scheduled)`)
+// music toggle works and persists; effects toggle exists
+assert.equal(await ava.locator('.snd button').first().getAttribute('aria-pressed'), 'true')
+await ava.locator('.snd button').first().click()
+assert.equal(await ava.locator('.snd button').first().getAttribute('aria-pressed'), 'false')
+const oscMuted = await ava.evaluate(() => window.__osc); await ava.waitForTimeout(1200)
+assert.ok((await ava.evaluate(() => window.__osc)) - oscMuted < 3, 'music kept playing after being muted')
+await ava.locator('.snd button').first().click()
+ok('music on/off button works')
 await ava.screenshot({ path: `${SHOTS}/03-student-race.png`, fullPage: true })
 await ben.screenshot({ path: `${SHOTS}/04-student-race-mobile.png`, fullPage: true })
 
@@ -139,6 +161,21 @@ await ava.waitForSelector('text=QUESTION 16')
 assert.equal((await post({ questionIndex: 0, answer: '60795' }, ah)).body.result, 'stale')
 assert.equal((await post({ questionIndex: 2, answer: '74682' }, ah)).body.result, 'stale') // skipping ahead
 ok('teacher opened Q16 for everyone; stale and skip-ahead submissions refused')
+
+// ── 6b. teacher reveals the answer → shown to students, question closed, then re-opened
+assert.ok(!(await ava.locator('.reveal-banner').count()), 'answer visible before reveal')
+await teacherClick('REVEAL ANSWER')
+await ava.waitForSelector('.reveal-banner')
+assert.match(await txt(ava, '.reveal-banner'), /869 × 46 = 39,974/)
+assert.ok(!(await ava.locator('input[aria-label="Your answer"]').count()), 'input should be gone after reveal')
+assert.equal((await post({ questionIndex: 1, answer: '39974' }, ah)).body.result, 'revealed')
+await ava.screenshot({ path: `${SHOTS}/08a-student-revealed.png`, fullPage: true })
+await teacher.screenshot({ path: `${SHOTS}/08b-teacher-revealed.png`, fullPage: true })
+ok('teacher pressed Reveal: students see "869 × 46 = 39,974"; server refuses further answers')
+await teacher.click('button[aria-label="Open question 16"]')
+await ava.waitForSelector('.reveal-banner', { state: 'detached' })
+await ava.waitForSelector('input[aria-label="Your answer"]')
+ok('re-opening the question hides the answer again and answering works')
 
 // ── 7. pause blocks answers, resume restores
 await teacherClick('PAUSE')

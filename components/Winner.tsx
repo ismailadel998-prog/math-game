@@ -1,5 +1,7 @@
 'use client'
 import { motion, useReducedMotion } from 'framer-motion'
+import { useEffect } from 'react'
+import { sound } from '@/lib/client/sound'
 import { CAR_NAMES, TOTAL_QUESTIONS, type PlayerView } from '@/lib/shared'
 import { Confetti } from './Confetti'
 import { Car, Logo, carColor } from './ui'
@@ -7,6 +9,7 @@ import { ordinal } from '@/lib/client/format'
 
 export function Winner({ players, meId, actions }: { players: PlayerView[]; meId?: string; actions: React.ReactNode }) {
   const reduce = useReducedMotion()
+  useEffect(() => { sound.play('win') }, [])
   const [first, second, third] = players
   const me = players.find((p) => p.id === meId)
   const pod = (p: PlayerView | undefined, place: 1 | 2 | 3) => {

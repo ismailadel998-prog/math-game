@@ -270,6 +270,42 @@ describe('race engine', () => {
     expect(await submitAnswer(store, code, ps[0].creds, { questionIndex: 0, answer: answerOf(0) }, tick())).toMatchObject({ result: 'correct', progress: 1 })
   })
 
+  it('reveal: answer is hidden until the teacher reveals it, then the question is closed; next question re-hides', async () => {
+    const { code, teacher, ps } = await setup()
+    await control(store, code, teacher, { action: 'start' }, t)
+    await submitAnswer(store, code, ps[1].creds, { questionIndex: 0, answer: answerOf(0) }, tick())
+    expect((await getState(store, code, ps[0].creds, t)).room.revealedAnswer).toBeNull()
+    // only the teacher can reveal
+    await expect(control(store, code, ps[0].creds, { action: 'reveal' }, t)).rejects.toMatchObject({ status: 401 })
+    expect((await getState(store, code, ps[0].creds, t)).room.revealedAnswer).toBeNull()
+
+    await control(store, code, teacher, { action: 'reveal' }, tick())
+    for (const creds of [ps[0].creds, teacher]) {
+      expect((await getState(store, code, creds, t)).room.revealedAnswer).toBe('6,755 × 9 = 60,795')
+    }
+    // closed: even a correct answer from the student who hadn't answered is refused, no advance
+    expect(await submitAnswer(store, code, ps[0].creds, { questionIndex: 0, answer: answerOf(0) }, tick())).toEqual({ result: 'revealed' })
+    expect((await getState(store, code, ps[0].creds, t)).me?.progress).toBe(0)
+
+    // next question: hidden again, and answering works again; the Q15 answer is not in Q16 state
+    await control(store, code, teacher, { action: 'next', fromQ: 0 }, tick())
+    const q16 = await getState(store, code, ps[0].creds, t)
+    expect(q16.room.revealedAnswer).toBeNull()
+    expect(JSON.stringify(q16)).not.toContain('60,795')
+    expect(await submitAnswer(store, code, ps[0].creds, { questionIndex: 1, answer: answerOf(1) }, tick())).toMatchObject({ result: 'correct' })
+  })
+
+  it('reveal is refused in the lobby and cleared by reset', async () => {
+    const { code, teacher, ps } = await setup()
+    await expect(control(store, code, teacher, { action: 'reveal' }, t)).rejects.toMatchObject({ status: 409 })
+    await control(store, code, teacher, { action: 'start' }, t)
+    await control(store, code, teacher, { action: 'reveal' }, tick())
+    await control(store, code, teacher, { action: 'reset', confirm: true }, tick())
+    await control(store, code, teacher, { action: 'start' }, tick())
+    expect((await getState(store, code, ps[0].creds, t)).room.revealedAnswer).toBeNull()
+    expect(await submitAnswer(store, code, ps[0].creds, { questionIndex: 0, answer: answerOf(0) }, tick())).toMatchObject({ result: 'correct' })
+  })
+
   it('nicknames: unique per room (case-insensitive), validated', async () => {
     const { code } = await setup(['Ava'])
     await expect(joinRoom(store, code, 'ava', 1)).rejects.toMatchObject({ code: 'nickname_taken' })

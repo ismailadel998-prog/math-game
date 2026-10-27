@@ -24,10 +24,24 @@ describe('supabase/migrations/0001_init.sql (run on real Postgres via PGlite)', 
     db = new PGlite()
     await db.exec(`create role service_role; create role anon; create role authenticated;`)
     await db.exec(readFileSync('supabase/migrations/0001_init.sql', 'utf8'))
+    await db.exec(readFileSync('supabase/migrations/0002_reveal.sql', 'utf8'))
   })
 
-  it('migration is re-runnable (idempotent)', async () => {
+  it('migrations are re-runnable (idempotent)', async () => {
     await db.exec(readFileSync('supabase/migrations/0001_init.sql', 'utf8'))
+    await db.exec(readFileSync('supabase/migrations/0002_reveal.sql', 'utf8'))
+  })
+
+  it('0002: advance_player is refused once the answer is revealed; reset_room clears it', async () => {
+    const r = await room('running', 0)
+    const p = await player(r, 'Ava')
+    await db.query(`update rooms set revealed = true where id = $1`, [r])
+    expect((await advance(r, p, 0)).rows).toHaveLength(0)
+    await db.query(`select reset_room($1)`, [r])
+    const row = await db.query<{ revealed: boolean }>(`select revealed from rooms where id=$1`, [r])
+    expect(row.rows[0].revealed).toBe(false)
+    await db.query(`update rooms set status='running' where id=$1`, [r])
+    expect((await advance(r, p, 0)).rows).toHaveLength(1)
   })
 
   it('advance_player moves exactly one checkpoint and sets the solved bit + timestamps', async () => {

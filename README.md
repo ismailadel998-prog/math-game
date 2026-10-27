@@ -60,7 +60,8 @@ Supabase (Postgres + Realtime, free tier) · deploys on Vercel.
 1. Go to <https://supabase.com> → **New project** (free plan). Pick any name/region, set a DB password.
 2. Open **SQL Editor → New query**, paste the entire contents of
    [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql), and click **Run**.
-   (It is safe to run twice.)
+   Then do the same with [`supabase/migrations/0002_reveal.sql`](supabase/migrations/0002_reveal.sql)
+   (adds the *Reveal answer* feature). Both are safe to run twice.
 3. Open **Project Settings → API** and copy:
    * **Project URL** → `NEXT_PUBLIC_SUPABASE_URL`
    * **anon public** key → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
@@ -94,6 +95,18 @@ restart) so you can try the game instantly. This fallback is disabled in product
 Or with the CLI: `npm i -g vercel && vercel` (then add the env vars with `vercel env add`, and `vercel --prod`).
 
 ---
+
+## Music, sound effects and "Reveal answer"
+
+* **Music & sound:** synthesized in the browser (no audio files). Calm music in the lobby, faster music
+  while racing, plus effects for correct, wrong, race start, new question, pause/resume, reveal and the
+  winner fanfare. Everyone has ♪ (music) and 🔊 (effects) buttons in the header. Music starts after the
+  first tap (browsers require a tap before playing audio) and is **off by default on the teacher's
+  screen**, so it doesn't clash when you share your screen; turn it on with ♪ if you want it.
+* **Reveal answer:** the teacher presses **REVEAL ANSWER**. Everyone then sees the full working
+  (e.g. `869 × 46 = 39,974`) and that question is closed (no more answers accepted). Opening the next
+  question, or re-opening the same one from the selector, hides it again. Before the button is pressed
+  the answer is never sent to any browser.
 
 ## Running a live online lesson
 

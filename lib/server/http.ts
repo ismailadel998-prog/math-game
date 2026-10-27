@@ -25,6 +25,8 @@ export function setupHint(e: unknown): string {
   const m = e instanceof Error ? e.message : ''
   if (/Supabase is not configured/i.test(m))
     return 'Setup problem: the Supabase environment variables are missing in Vercel (NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY). Add them, then redeploy.'
+  if (/revealed/i.test(m))
+    return 'Setup problem: run supabase/migrations/0002_reveal.sql in the Supabase SQL Editor (adds the Reveal answer feature).'
   if (/Could not find the table|does not exist|schema cache|PGRST205|42P01/i.test(m))
     return 'Setup problem: the database tables are missing. Run supabase/migrations/0001_init.sql in the Supabase SQL Editor.'
   if (/Invalid API key|JWT|Unauthorized|401/i.test(m))

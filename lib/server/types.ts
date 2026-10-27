@@ -11,6 +11,7 @@ export interface RoomRow {
   pausedAt: number | null
   pausedTotalMs: number
   showLeaderboard: boolean
+  revealed: boolean
   createdAt: number
 }
 
@@ -38,7 +39,7 @@ export interface SubmissionRow {
 }
 
 export type RoomPatch = Partial<
-  Pick<RoomRow, 'status' | 'currentQ' | 'qOpenedAt' | 'pausedAt' | 'pausedTotalMs' | 'showLeaderboard'>
+  Pick<RoomRow, 'status' | 'currentQ' | 'qOpenedAt' | 'pausedAt' | 'pausedTotalMs' | 'showLeaderboard' | 'revealed'>
 >
 
 export interface RoomGuard {

@@ -5,6 +5,8 @@ import { useEffect, useState } from 'react'
 import { ApiError, fetchState, submitApi } from '@/lib/client/api'
 import { clearPlayerSession, getPlayerSession, type PlayerSession } from '@/lib/client/session'
 import { formatClock, useElapsed, useRoom } from '@/lib/client/useRoom'
+import { sound } from '@/lib/client/sound'
+import { useMood, useSoundSetup, useStateSounds } from '@/lib/client/useSound'
 import { TOTAL_QUESTIONS } from '@/lib/shared'
 import { Feedback } from '@/components/Feedback'
 import { HeroCopy, JoinCard, WaitingFooter } from '@/components/JoinCard'
@@ -22,6 +24,8 @@ export default function PlayClient({ code }: { code: string }) {
 }
 
 function JoinHere({ code, onJoined }: { code: string; onJoined: () => void }) {
+  useSoundSetup('student')
+  useMood('lobby')
   const [car, setCar] = useState(0)
   const [exists, setExists] = useState<boolean | null>(null)
   const [finished, setFinished] = useState(false)
@@ -61,6 +65,10 @@ function Game({ code, session, onLost }: { code: string; session: PlayerSession;
   const [view, setView] = useState<'race' | 'board'>('race')
   const [confirmLeave, setConfirmLeave] = useState(false)
   const currentQ = state?.room.currentQ
+  useSoundSetup('student')
+  useStateSounds(state, 'student')
+  const st = state?.room.status
+  useMood(st === 'running' ? 'race' : st === 'paused' || st === 'lobby' ? 'lobby' : 'off')
 
   useEffect(() => { setAnswer(''); setNotice('') }, [currentQ])
 
@@ -79,10 +87,11 @@ function Game({ code, session, onLost }: { code: string; session: PlayerSession;
     try {
       const r = await submitApi(code, auth, room.currentQ, answer)
       switch (r.result) {
-        case 'correct': setFeedback({ correct: true, progress: r.progress, rank: r.rank, finished: r.finished }); break
-        case 'incorrect': setFeedback({ correct: false, progress: me!.progress, rank: me!.rank, finished: false }); break
+        case 'correct': sound.play('correct'); setFeedback({ correct: true, progress: r.progress, rank: r.rank, finished: r.finished }); break
+        case 'incorrect': sound.play('wrong'); setFeedback({ correct: false, progress: me!.progress, rank: me!.rank, finished: false }); break
         case 'already_solved': setNotice('You already solved this question.'); break
         case 'paused': setNotice('The teacher paused the race. Hang tight!'); break
+        case 'revealed': setNotice('The teacher revealed the answer, so this question is closed.'); break
         case 'stale': setNotice('The teacher moved to a new question.'); break
         case 'too_fast': setNotice('Easy there! Wait a moment, then try again.'); break
         case 'not_running': setNotice('The race is not running right now.'); break
@@ -124,7 +133,7 @@ function Game({ code, session, onLost }: { code: string; session: PlayerSession;
 
   const q = room.question!
   const paused = room.status === 'paused'
-  const canAnswer = room.status === 'running' && !me.solvedCurrent
+  const canAnswer = room.status === 'running' && !me.solvedCurrent && !room.revealedAnswer
 
   if (view === 'board' && players) {
     return (
@@ -154,7 +163,9 @@ function Game({ code, session, onLost }: { code: string; session: PlayerSession;
           <div className="instruction"><span aria-hidden>✎</span> Solve on paper first, then enter your answer.</div>
           <div className="problem" role="img" aria-label={`${q.top} times ${q.bottom}`}><span>{q.top}</span><span>×&nbsp; {q.bottom}</span><i /></div>
           {paused && <div className="paused-banner" role="status">⏸ The teacher paused the race</div>}
-          {me.solvedCurrent ? (
+          {room.revealedAnswer ? (
+            <div className="reveal-banner" role="status">THE CORRECT ANSWER<b>{room.revealedAnswer}</b><small>{me.solvedCurrent ? 'You got this one!' : 'This question is closed. Check your working on paper.'}</small></div>
+          ) : me.solvedCurrent ? (
             <div className="solved-banner" role="status">✓ Solved! Nice work.<small>Waiting for the teacher to open the next question…</small></div>
           ) : (
             <>
